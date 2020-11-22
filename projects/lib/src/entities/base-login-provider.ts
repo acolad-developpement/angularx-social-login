@@ -4,6 +4,7 @@ import { SocialUser } from './social-user';
 export abstract class BaseLoginProvider implements LoginProvider {
   constructor() {}
 
+  initialized = false;
   abstract initialize(): Promise<void>;
   abstract getLoginStatus(): Promise<SocialUser>;
   abstract signIn(): Promise<SocialUser>;

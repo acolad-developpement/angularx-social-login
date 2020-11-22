@@ -22,7 +22,8 @@ import {
     {
       provide: 'SocialAuthServiceConfig',
       useValue: {
-        autoLogin: true,
+        autoLogin: false,
+        lazyLoad: true,
         providers: [
           {
             id: GoogleLoginProvider.PROVIDER_ID,

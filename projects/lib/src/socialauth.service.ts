@@ -5,6 +5,7 @@ import { SocialUser } from './entities/social-user';
 
 export interface SocialAuthServiceConfig {
   autoLogin?: boolean;
+  lazyLoad?: boolean;
   providers: { id: string; provider: LoginProvider }[];
   onError?: (error: any) => any;
 }
@@ -20,6 +21,7 @@ export class SocialAuthService {
 
   private providers: Map<string, LoginProvider> = new Map();
   private autoLogin = false;
+  private lazyLoad = false;
 
   private _user: SocialUser = null;
   private _authState: ReplaySubject<SocialUser> = new ReplaySubject(1);
@@ -51,11 +53,16 @@ export class SocialAuthService {
 
   private initialize(config: SocialAuthServiceConfig) {
     this.autoLogin = config.autoLogin !== undefined ? config.autoLogin : false;
+    this.lazyLoad = config.lazyLoad !== undefined ? config.lazyLoad : false;
     const { onError = console.error } = config;
 
     config.providers.forEach((item) => {
       this.providers.set(item.id, item.provider);
     });
+
+    if (this.lazyLoad) {
+      return;
+    }
 
     Promise.all(
       Array.from(this.providers.values()).map((provider) =>
@@ -68,7 +75,7 @@ export class SocialAuthService {
           let loggedIn = false;
 
           this.providers.forEach((provider: LoginProvider, key: string) => {
-            let promise = provider.getLoginStatus();
+            const promise = provider.getLoginStatus();
             loginStatusPromises.push(promise);
             promise
               .then((user: SocialUser) => {
@@ -98,12 +105,31 @@ export class SocialAuthService {
       });
   }
 
-  signIn(providerId: string, signInOptions?: any): Promise<SocialUser> {
+  private lazyLoadInitialize(provider: LoginProvider): Promise<void> {
+    return provider.initialize()
+      .then(() => {
+        provider.initialized = true;
+        this.initialized = true;
+        this._initState.next(this.initialized);
+        this._initState.complete();
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  }
+
+  async signIn(providerId: string, signInOptions?: any): Promise<SocialUser> {
+
+    if (this.lazyLoad) {
+      const provider = this.providers.get(providerId);
+      await this.lazyLoadInitialize(provider);
+    }
+
     return new Promise((resolve, reject) => {
       if (!this.initialized) {
         reject(SocialAuthService.ERR_NOT_INITIALIZED);
       } else {
-        let providerObject = this.providers.get(providerId);
+        const providerObject = this.providers.get(providerId);
         if (providerObject) {
           providerObject
             .signIn(signInOptions)
@@ -124,15 +150,15 @@ export class SocialAuthService {
     });
   }
 
-  signOut(revoke: boolean = false): Promise<any> {
+  async signOut(revoke: boolean = false): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.initialized) {
         reject(SocialAuthService.ERR_NOT_INITIALIZED);
       } else if (!this._user) {
         reject(SocialAuthService.ERR_NOT_LOGGED_IN);
       } else {
-        let providerId = this._user.provider;
-        let providerObject = this.providers.get(providerId);
+        const providerId = this._user.provider;
+        const providerObject = this.providers.get(providerId);
         if (providerObject) {
           providerObject
             .signOut(revoke)
